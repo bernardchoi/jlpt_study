@@ -18,6 +18,9 @@
     --shu: #B23A2E;
     --shu-soft: #E7C9BF;
     --gold: #9C7A2A;
+    --indigo: #3E5C76;
+    --green: #3C7A3C;
+    --green-soft: #E4F1E1;
     --radius-s: 3px;
   }
   *{box-sizing:border-box;}
@@ -167,6 +170,68 @@
   .bookmark-toggle:hover{ background: var(--gold); color:#fff; }
   .bookmark-toggle.active{ background: var(--gold); color:#fff; }
   .bookmark-toggle.active .jlpt-count{ color: #fff2d4; }
+
+  .quiz-bar{ margin-bottom: 36px; }
+  .quiz-toggle{ border-color: var(--indigo); color: var(--indigo); }
+  .quiz-toggle:hover{ background: var(--indigo); color:#fff; }
+  .quiz-toggle.active{ background: var(--indigo); color:#fff; }
+
+  .quiz-panel:empty{ display:none; }
+  .quiz-panel:not(:empty){
+    margin-top:12px;
+    padding: 22px;
+    border: 1px solid var(--paper-line);
+    background: rgba(255,255,255,0.35);
+    border-radius: var(--radius-s);
+  }
+  .quiz-setup-label{ font-size:13px; color: var(--ink-soft); margin-bottom:12px; }
+  .quiz-source-buttons{ display:flex; flex-wrap:wrap; gap:8px; }
+  .quiz-source-buttons .jlpt-btn:disabled{ opacity:0.4; cursor:not-allowed; }
+  .quiz-source-buttons .jlpt-btn:disabled:hover{ background:none; color: var(--ink); border-color: var(--ink); }
+
+  .quiz-head{ display:flex; align-items:center; justify-content:space-between; margin-bottom:16px; gap:10px; }
+  .quiz-progress{ font-size:12px; color: var(--ink-faint); }
+  .quiz-quit-btn{
+    font-size:11.5px;
+    color: var(--ink-faint);
+    background:none;
+    border:none;
+    text-decoration:underline;
+    cursor:pointer;
+    padding:0;
+  }
+  .quiz-quit-btn:hover{ color: var(--shu); }
+  .quiz-question{ display:flex; justify-content:center; margin-bottom:22px; }
+  .quiz-choices{ display:flex; flex-direction:column; gap:8px; margin-bottom:16px; }
+  .quiz-choice{
+    font-family:'Noto Sans KR', sans-serif;
+    font-size:14px;
+    text-align:left;
+    padding:10px 14px;
+    border: 1.5px solid var(--ink);
+    border-radius: var(--radius-s);
+    background: var(--paper-light);
+    color: var(--ink);
+    cursor:pointer;
+  }
+  .quiz-choice:hover:not(:disabled){ border-color: var(--indigo); color: var(--indigo); }
+  .quiz-choice:disabled{ cursor:default; }
+  .quiz-choice.correct{ border-color: var(--green); background: var(--green-soft); color: var(--green); }
+  .quiz-choice.wrong{ border-color: var(--shu); background: var(--shu-soft); color: var(--shu); }
+  .quiz-next-btn{
+    font-family:'Noto Sans KR', sans-serif;
+    font-weight:700;
+    font-size:13px;
+    padding:8px 18px;
+    border: 1.5px solid var(--ink);
+    border-radius: var(--radius-s);
+    background: var(--ink);
+    color: var(--paper-light);
+    cursor:pointer;
+  }
+  .quiz-next-btn:hover{ background: var(--indigo); border-color: var(--indigo); }
+  .quiz-result{ font-size:19px; font-weight:700; margin-bottom:16px; }
+  .quiz-result-actions{ display:flex; flex-wrap:wrap; gap:8px; }
 
   .card{
     border-top: 1px solid var(--paper-line);
@@ -380,6 +445,11 @@
       <button type="button" class="jlpt-btn" data-level="1">N1</button>
     </div>
     <div class="jlpt-grid" id="jlptGrid"></div>
+  </div>
+
+  <div class="quiz-bar">
+    <button type="button" class="jlpt-btn quiz-toggle" id="quizToggleBtn">🎓 학습 모드(퀴즈)</button>
+    <div class="quiz-panel" id="quizPanel"></div>
   </div>
 
   <div id="results"></div>
@@ -964,6 +1034,148 @@
   });
 
   refreshBookmarkBar();
+
+  // ---------- 학습 모드(퀴즈) ----------
+  var QUIZ_LENGTH = 10;
+  var quizPanelEl = document.getElementById("quizPanel");
+  var quizToggleBtn = document.getElementById("quizToggleBtn");
+  var quizOpen = false;
+  var quizState = null;
+
+  function shuffleArray(arr){
+    for (var i = arr.length - 1; i > 0; i--){
+      var j = Math.floor(Math.random() * (i + 1));
+      var t = arr[i]; arr[i] = arr[j]; arr[j] = t;
+    }
+    return arr;
+  }
+
+  function meaningLabel(ch){
+    var d = MEANINGS_DATA[ch];
+    return (d && d.m && d.m.length) ? d.m[0] : "";
+  }
+
+  function quizEligible(list){
+    return (list || []).filter(function(ch){ return !!meaningLabel(ch); });
+  }
+
+  function renderQuizSetup(){
+    quizState = null;
+    quizPanelEl.innerHTML = "";
+    quizPanelEl.appendChild(el("div","quiz-setup-label","학습할 범위를 선택 요망 (한자를 보고 뜻 맞히기 4지선다, 문제 "+QUIZ_LENGTH+"개)"));
+    var row = el("div","quiz-source-buttons");
+
+    function addSourceBtn(label, pool){
+      var count = quizEligible(pool).length;
+      var b = el("button","jlpt-btn", label+" ("+count+")");
+      b.type = "button";
+      if (count < 4) b.disabled = true;
+      b.addEventListener("click", function(){ startQuiz(pool); });
+      row.appendChild(b);
+    }
+    addSourceBtn("★ 즐겨찾기", Array.from(bookmarkSet));
+    addSourceBtn("N5", jlptIndex["5"]);
+    addSourceBtn("N4", jlptIndex["4"]);
+    addSourceBtn("N3", jlptIndex["3"]);
+    addSourceBtn("N2", jlptIndex["2"]);
+    addSourceBtn("N1", jlptIndex["1"]);
+    quizPanelEl.appendChild(row);
+  }
+
+  function startQuiz(pool){
+    var eligible = quizEligible(pool);
+    if (eligible.length < 4){
+      quizPanelEl.innerHTML = "";
+      quizPanelEl.appendChild(el("div","empty-state","문제를 만들기에 한자가 부족함(최소 4자 필요). 다른 범위를 선택하거나 즐겨찾기를 더 추가 요망."));
+      return;
+    }
+    var order = shuffleArray(eligible.slice()).slice(0, Math.min(QUIZ_LENGTH, eligible.length));
+    quizState = { pool: eligible, order: order, index: 0, score: 0 };
+    renderQuizQuestion();
+  }
+
+  function quizHeader(progressText){
+    var head = el("div","quiz-head");
+    head.appendChild(el("div","quiz-progress", progressText));
+    var quitBtn = el("button","quiz-quit-btn","범위 다시 선택");
+    quitBtn.type = "button";
+    quitBtn.addEventListener("click", renderQuizSetup);
+    head.appendChild(quitBtn);
+    return head;
+  }
+
+  function renderQuizQuestion(){
+    var ch = quizState.order[quizState.index];
+    var correctLabel = meaningLabel(ch);
+    var candidates = shuffleArray(quizState.pool.filter(function(c){
+      return c !== ch && meaningLabel(c) !== correctLabel;
+    }));
+    var distractors = candidates.slice(0, 3);
+    var options = shuffleArray([correctLabel].concat(distractors.map(meaningLabel)));
+
+    quizPanelEl.innerHTML = "";
+    quizPanelEl.appendChild(quizHeader((quizState.index + 1) + " / " + quizState.order.length + "   맞음 " + quizState.score + "개"));
+
+    var qWrap = el("div","quiz-question");
+    qWrap.appendChild(buildCell(ch, false, false));
+    quizPanelEl.appendChild(qWrap);
+
+    var choicesWrap = el("div","quiz-choices");
+    options.forEach(function(label){
+      var btn = el("button","quiz-choice", label);
+      btn.type = "button";
+      btn.addEventListener("click", function(){ handleQuizAnswer(label, correctLabel, btn, choicesWrap); });
+      choicesWrap.appendChild(btn);
+    });
+    quizPanelEl.appendChild(choicesWrap);
+  }
+
+  function handleQuizAnswer(chosenLabel, correctLabel, btnEl, choicesWrap){
+    Array.from(choicesWrap.children).forEach(function(b){ b.disabled = true; });
+    var correct = chosenLabel === correctLabel;
+    if (correct){
+      quizState.score++;
+      btnEl.classList.add("correct");
+    } else {
+      btnEl.classList.add("wrong");
+      Array.from(choicesWrap.children).forEach(function(b){
+        if (b.textContent === correctLabel) b.classList.add("correct");
+      });
+    }
+    var isLast = quizState.index + 1 >= quizState.order.length;
+    var nextBtn = el("button","quiz-next-btn", isLast ? "결과 보기" : "다음 문제 →");
+    nextBtn.type = "button";
+    nextBtn.addEventListener("click", function(){
+      quizState.index++;
+      if (quizState.index < quizState.order.length) renderQuizQuestion();
+      else renderQuizResult();
+    });
+    quizPanelEl.appendChild(nextBtn);
+  }
+
+  function renderQuizResult(){
+    var pool = quizState.pool;
+    var score = quizState.score, total = quizState.order.length;
+    quizPanelEl.innerHTML = "";
+    quizPanelEl.appendChild(el("div","quiz-result", total+"문제 중 "+score+"개 정답 ("+Math.round(score/total*100)+"%)"));
+    var actions = el("div","quiz-result-actions");
+    var retryBtn = el("button","quiz-choice","같은 범위로 다시 풀기");
+    retryBtn.type = "button";
+    retryBtn.addEventListener("click", function(){ startQuiz(pool); });
+    var changeBtn = el("button","quiz-choice","범위 다시 선택");
+    changeBtn.type = "button";
+    changeBtn.addEventListener("click", renderQuizSetup);
+    actions.appendChild(retryBtn);
+    actions.appendChild(changeBtn);
+    quizPanelEl.appendChild(actions);
+  }
+
+  quizToggleBtn.addEventListener("click", function(){
+    quizOpen = !quizOpen;
+    quizToggleBtn.classList.toggle("active", quizOpen);
+    if (quizOpen) renderQuizSetup();
+    else { quizPanelEl.innerHTML = ""; quizState = null; }
+  });
 
   // 데이터 내장형: 별도 로딩 없이 즉시 사용 가능
   statusEl.textContent = "준비 완료(오프라인 내장 데이터, 상용·교육한자 중심 약 3400자 수록). 한자 입력 후 분해 버튼 클릭 요망.";
