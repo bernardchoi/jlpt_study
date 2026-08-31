@@ -21,6 +21,7 @@
     --indigo: #3E5C76;
     --green: #3C7A3C;
     --green-soft: #E4F1E1;
+    --teal: #2E7D6B;
     --radius-s: 3px;
   }
   *{box-sizing:border-box;}
@@ -164,6 +165,72 @@
     cursor:pointer;
   }
   .jlpt-char:hover{ border-color: var(--shu); color: var(--shu); }
+
+  .ocr-bar{ margin-bottom: 24px; }
+  .ocr-toggle{ border-color: var(--teal); color: var(--teal); }
+  .ocr-toggle:hover{ background: var(--teal); color:#fff; }
+  .ocr-toggle.active{ background: var(--teal); color:#fff; }
+  .ocr-panel:empty{ display:none; }
+  .ocr-panel:not(:empty){
+    margin-top:12px;
+    padding: 20px;
+    border: 1px solid var(--paper-line);
+    background: rgba(255,255,255,0.35);
+    border-radius: var(--radius-s);
+  }
+  .ocr-note{ font-size:12.5px; color: var(--ink-soft); margin-bottom:14px; line-height:1.5; }
+  .ocr-file-btn{ border-color: var(--teal); color: var(--teal); }
+  .ocr-file-btn:hover{ background: var(--teal); color:#fff; }
+  .ocr-crop-wrap{
+    position:relative;
+    display:inline-block;
+    max-width:100%;
+    margin:14px 0;
+    touch-action:none;
+    line-height:0;
+  }
+  .ocr-crop-wrap img{
+    display:block;
+    max-width:100%;
+    max-height:60vh;
+    height:auto;
+    user-select:none;
+    -webkit-user-drag:none;
+    border:1px solid var(--paper-line);
+  }
+  .ocr-crop-box{
+    position:absolute;
+    border:2px solid var(--shu);
+    background: rgba(178,58,46,0.15);
+    box-sizing:border-box;
+    cursor:move;
+    touch-action:none;
+  }
+  .ocr-size-row{
+    display:flex;
+    align-items:center;
+    gap:10px;
+    margin:12px 0;
+    font-size:12.5px;
+    color: var(--ink-soft);
+  }
+  .ocr-size-row input[type=range]{ flex:1; }
+  .ocr-actions{ display:flex; flex-wrap:wrap; gap:8px; margin-top:6px; }
+  .ocr-recognize-btn{
+    font-family:'Noto Sans KR', sans-serif;
+    font-weight:700;
+    font-size:13px;
+    padding:8px 18px;
+    border: 1.5px solid var(--teal);
+    border-radius: var(--radius-s);
+    background: var(--teal);
+    color: #fff;
+    cursor:pointer;
+  }
+  .ocr-recognize-btn:hover{ opacity:0.9; }
+  .ocr-recognize-btn:disabled{ opacity:0.5; cursor:default; }
+  .ocr-status{ font-size:12.5px; color: var(--ink-faint); margin:10px 0 4px; min-height:16px; }
+  .ocr-candidates{ display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; }
 
   .bookmark-bar{ margin-bottom: 24px; }
   .bookmark-toggle{ border-color: var(--gold); color: var(--gold); }
@@ -430,6 +497,11 @@
   </form>
   <div class="hint">여러 글자 입력 시 글자별로 결과 나눠 표시함. 예: 語学</div>
 
+  <div class="ocr-bar">
+    <button type="button" class="jlpt-btn ocr-toggle" id="ocrToggleBtn">📷 사진으로 한자 찾기</button>
+    <div class="ocr-panel" id="ocrPanel"></div>
+  </div>
+
   <div class="bookmark-bar">
     <button type="button" class="jlpt-btn bookmark-toggle" id="bookmarkToggleBtn">★ 즐겨찾기 <span class="jlpt-count" id="bookmarkCount">(0)</span></button>
     <div class="jlpt-grid" id="bookmarkGrid"></div>
@@ -455,8 +527,8 @@
   <div id="results"></div>
 
   <footer>
-    분해 구조(IDS) 출처: CHISE / cjkvi-ids 프로젝트 · 한자 뜻·음훈 출처: KANJIDIC 기반 kanji-data(davidluzgouveia) · 부수 214자 훈음: 자체 정리<br>
-    모든 데이터는 이 페이지에 내장되어 있으며, 외부 서버·API 연결 없이 완전 오프라인으로 동작함.
+    분해 구조(IDS) 출처: CHISE / cjkvi-ids 프로젝트 · 한자 뜻·음훈 출처: KANJIDIC 기반 kanji-data(davidluzgouveia) · 부수 214자 훈음: 자체 정리 · 사진 한자 인식: Tesseract.js(브라우저 내 처리)<br>
+    검색·분해·즐겨찾기·퀴즈 등 핵심 기능은 모두 내장 데이터로 완전 오프라인 동작함. "사진으로 한자 찾기" 기능만 최초 사용 시 인식 엔진을 CDN에서 내려받으며, 이때도 사진 자체는 서버로 전송되지 않고 브라우저 안에서만 처리됨.
   </footer>
 
 </div>
@@ -1744,6 +1816,217 @@
     quizToggleBtn.classList.toggle("active", quizOpen);
     if (quizOpen) renderQuizSetup();
     else { quizPanelEl.innerHTML = ""; quizState = null; }
+  });
+
+  // ---------- 사진으로 한자 찾기(OCR) ----------
+  // Tesseract.js는 이 기능을 실제로 사용할 때(인식 버튼 클릭 시)만 CDN에서 불러옴.
+  // 사진 자체는 서버로 전송되지 않고 브라우저 안(WebAssembly)에서만 처리됨.
+  var TESSERACT_CDN = "https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js";
+  var ocrPanelEl = document.getElementById("ocrPanel");
+  var ocrToggleBtn = document.getElementById("ocrToggleBtn");
+  var ocrOpen = false;
+  var tesseractLoadPromise = null;
+
+  function loadTesseract(){
+    if (window.Tesseract) return Promise.resolve();
+    if (tesseractLoadPromise) return tesseractLoadPromise;
+    tesseractLoadPromise = new Promise(function(resolve, reject){
+      var s = document.createElement("script");
+      s.src = TESSERACT_CDN;
+      s.onload = function(){ resolve(); };
+      s.onerror = function(){ tesseractLoadPromise = null; reject(new Error("네트워크 오류")); };
+      document.head.appendChild(s);
+    });
+    return tesseractLoadPromise;
+  }
+
+  function renderOcrSetup(){
+    ocrPanelEl.innerHTML = "";
+    ocrPanelEl.appendChild(el("div","ocr-note",
+      "교재 사진을 올리고 한자 한 글자를 네모 박스로 맞춘 뒤 인식 요망. 사진은 서버에 전송되지 않고 이 브라우저 안에서만 처리됨. " +
+      "단, 인식 엔진(일본어 문자 인식 모델)은 최초 인식 시 1회 인터넷에서 내려받아야 함(약 10~15MB). 내려받은 뒤에는 브라우저에 캐시되어 재사용됨."));
+
+    var fileInput = document.createElement("input");
+    fileInput.type = "file";
+    fileInput.accept = "image/*";
+    fileInput.setAttribute("capture", "environment");
+    fileInput.style.display = "none";
+
+    var pickBtn = el("button","jlpt-btn ocr-file-btn","사진 선택 / 촬영");
+    pickBtn.type = "button";
+    pickBtn.addEventListener("click", function(){ fileInput.click(); });
+
+    ocrPanelEl.appendChild(pickBtn);
+    ocrPanelEl.appendChild(fileInput);
+
+    fileInput.addEventListener("change", function(e){
+      var file = e.target.files && e.target.files[0];
+      if (!file) return;
+      var reader = new FileReader();
+      reader.onload = function(ev){ renderOcrCropper(ev.target.result); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function renderOcrCropper(dataUrl){
+    ocrPanelEl.innerHTML = "";
+    var status = el("div","ocr-status","네모 박스를 한자 한 글자 위로 옮기고 크기를 맞춘 뒤 '인식하기'를 클릭 요망.");
+    ocrPanelEl.appendChild(status);
+
+    var wrap = el("div","ocr-crop-wrap");
+    var img = document.createElement("img");
+    img.src = dataUrl;
+    wrap.appendChild(img);
+    var box = el("div","ocr-crop-box");
+    wrap.appendChild(box);
+    ocrPanelEl.appendChild(wrap);
+
+    var sizeRow = el("div","ocr-size-row");
+    sizeRow.appendChild(el("span","","박스 크기"));
+    var slider = document.createElement("input");
+    slider.type = "range"; slider.min = "10"; slider.max = "70"; slider.value = "30";
+    sizeRow.appendChild(slider);
+    ocrPanelEl.appendChild(sizeRow);
+
+    var actionsRow = el("div","ocr-actions");
+    var recognizeBtn = el("button","ocr-recognize-btn","이 부분 인식하기");
+    recognizeBtn.type = "button";
+    var retakeBtn = el("button","jlpt-btn","다른 사진 선택");
+    retakeBtn.type = "button";
+    retakeBtn.addEventListener("click", renderOcrSetup);
+    actionsRow.appendChild(recognizeBtn);
+    actionsRow.appendChild(retakeBtn);
+    ocrPanelEl.appendChild(actionsRow);
+
+    var resultArea = el("div","ocr-candidates");
+    ocrPanelEl.appendChild(resultArea);
+
+    var pos = { xPct: 35, yPct: 35 };
+    var sizePct = 30;
+
+    function applyBoxStyle(){
+      var w = img.clientWidth, h = img.clientHeight;
+      if (!w || !h) return;
+      var boxSizePx = Math.min(w, h) * (sizePct / 100);
+      box.style.width = boxSizePx + "px";
+      box.style.height = boxSizePx + "px";
+      var maxX = Math.max(0, w - boxSizePx), maxY = Math.max(0, h - boxSizePx);
+      var left = Math.max(0, Math.min(maxX, (pos.xPct / 100) * w));
+      var top = Math.max(0, Math.min(maxY, (pos.yPct / 100) * h));
+      box.style.left = left + "px";
+      box.style.top = top + "px";
+    }
+
+    img.addEventListener("load", applyBoxStyle);
+    if (img.complete && img.naturalWidth) applyBoxStyle();
+
+    // 화면 회전·크기 변경 시 박스가 이미지 밖으로 밀려나거나 어긋나지 않도록 재계산
+    if (window.ResizeObserver){
+      var ro = new ResizeObserver(applyBoxStyle);
+      ro.observe(wrap);
+    } else {
+      window.addEventListener("resize", applyBoxStyle);
+    }
+
+    slider.addEventListener("input", function(){
+      sizePct = parseInt(slider.value, 10);
+      applyBoxStyle();
+    });
+
+    var dragging = false, startX = 0, startY = 0, startLeft = 0, startTop = 0;
+    box.addEventListener("pointerdown", function(e){
+      dragging = true;
+      try { box.setPointerCapture(e.pointerId); } catch (err) {}
+      startX = e.clientX; startY = e.clientY;
+      startLeft = parseFloat(box.style.left) || 0;
+      startTop = parseFloat(box.style.top) || 0;
+    });
+    box.addEventListener("pointermove", function(e){
+      if (!dragging) return;
+      var w = img.clientWidth, h = img.clientHeight;
+      var boxW = box.clientWidth, boxH = box.clientHeight;
+      var newLeft = Math.max(0, Math.min(w - boxW, startLeft + (e.clientX - startX)));
+      var newTop = Math.max(0, Math.min(h - boxH, startTop + (e.clientY - startY)));
+      box.style.left = newLeft + "px";
+      box.style.top = newTop + "px";
+      pos.xPct = (newLeft / w) * 100;
+      pos.yPct = (newTop / h) * 100;
+    });
+    box.addEventListener("pointerup", function(){ dragging = false; });
+    box.addEventListener("pointercancel", function(){ dragging = false; });
+
+    recognizeBtn.addEventListener("click", function(){
+      runOcrRecognition(img, box, status, resultArea, recognizeBtn);
+    });
+  }
+
+  function runOcrRecognition(img, box, status, resultArea, btn){
+    btn.disabled = true;
+    resultArea.innerHTML = "";
+    status.textContent = window.Tesseract ? "인식 중…" : "인식 엔진 불러오는 중(최초 1회, 인터넷 필요)…";
+
+    loadTesseract().then(function(){
+      status.textContent = "인식 중…";
+      var scaleX = img.naturalWidth / img.clientWidth;
+      var scaleY = img.naturalHeight / img.clientHeight;
+      var boxLeft = parseFloat(box.style.left) || 0;
+      var boxTop = parseFloat(box.style.top) || 0;
+      var boxW = box.clientWidth, boxH = box.clientHeight;
+      var sx = boxLeft * scaleX, sy = boxTop * scaleY, sw = boxW * scaleX, sh = boxH * scaleY;
+
+      var canvas = document.createElement("canvas");
+      var targetSize = 320;
+      var upscale = Math.max(1, targetSize / Math.max(sw, sh));
+      canvas.width = Math.max(1, Math.round(sw * upscale));
+      canvas.height = Math.max(1, Math.round(sh * upscale));
+      var ctx = canvas.getContext("2d");
+      ctx.drawImage(img, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+
+      return Tesseract.recognize(canvas, "jpn", {
+        logger: function(m){
+          if (m && m.status && typeof m.progress === "number"){
+            var label = m.status === "recognizing text" ? "인식 중" : "엔진 준비 중";
+            status.textContent = label + " (" + Math.round(m.progress * 100) + "%)";
+          }
+        }
+      });
+    }).then(function(result){
+      btn.disabled = false;
+      var text = (result && result.data && result.data.text) || "";
+      var chars = Array.from(new Set(Array.from(text).filter(isCJK)));
+      if (!chars.length){
+        status.textContent = "한자를 인식하지 못함. 박스를 글자에 더 정확히 맞추거나 사진 화질을 확인 후 다시 시도 요망.";
+        return;
+      }
+      status.textContent = chars.length === 1
+        ? "인식됨: " + chars[0] + " (아래에서 결과 확인 가능)"
+        : "여러 후보가 인식됨. 맞는 한자를 클릭 요망:";
+      chars.forEach(function(ch){
+        var b = el("button","jlpt-char", ch);
+        b.type = "button";
+        b.addEventListener("click", function(){
+          document.getElementById("kanjiInput").value = ch;
+          runSearch(ch);
+          resultsEl.scrollIntoView({behavior:"smooth", block:"start"});
+        });
+        resultArea.appendChild(b);
+      });
+      if (chars.length === 1){
+        document.getElementById("kanjiInput").value = chars[0];
+        runSearch(chars[0]);
+        resultsEl.scrollIntoView({behavior:"smooth", block:"start"});
+      }
+    }).catch(function(err){
+      btn.disabled = false;
+      status.textContent = "인식 엔진을 불러오지 못함. 인터넷 연결을 확인하고 다시 시도 요망. (" + ((err && err.message) || err) + ")";
+    });
+  }
+
+  ocrToggleBtn.addEventListener("click", function(){
+    ocrOpen = !ocrOpen;
+    ocrToggleBtn.classList.toggle("active", ocrOpen);
+    if (ocrOpen) renderOcrSetup();
+    else ocrPanelEl.innerHTML = "";
   });
 
   // 데이터 내장형: 별도 로딩 없이 즉시 사용 가능
