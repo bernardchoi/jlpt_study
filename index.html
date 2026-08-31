@@ -116,6 +116,52 @@
     border-top: 1px dashed var(--paper-line);
   }
 
+  .jlpt-filter{ margin-bottom: 36px; }
+  .jlpt-filter-label{ font-size:12px; color: var(--ink-faint); margin-bottom:8px; }
+  .jlpt-buttons{ display:flex; flex-wrap:wrap; gap:8px; margin-bottom:10px; }
+  .jlpt-btn{
+    font-family:'Noto Sans KR', sans-serif;
+    font-size:13px;
+    font-weight:700;
+    padding:6px 14px;
+    border:1.5px solid var(--ink);
+    border-radius: 14px;
+    background: var(--paper-light);
+    color: var(--ink);
+    cursor:pointer;
+  }
+  .jlpt-btn:hover{ border-color: var(--shu); color: var(--shu); }
+  .jlpt-btn.active{ background: var(--ink); color: var(--paper-light); }
+  .jlpt-count{ font-weight:400; color: var(--ink-faint); margin-left:4px; }
+  .jlpt-btn.active .jlpt-count{ color: var(--paper-line); }
+  .jlpt-grid{
+    display:flex;
+    flex-wrap:wrap;
+    gap:6px;
+    max-height: 260px;
+    overflow-y: auto;
+    padding: 10px;
+  }
+  .jlpt-grid:not(:empty){
+    border: 1px solid var(--paper-line);
+    background: rgba(255,255,255,0.35);
+    border-radius: var(--radius-s);
+  }
+  .jlpt-char{
+    width:38px; height:38px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-family:'Noto Serif JP', serif;
+    font-size:19px;
+    border:1px solid var(--paper-line);
+    border-radius: var(--radius-s);
+    background: var(--paper-light);
+    color: var(--ink);
+    cursor:pointer;
+  }
+  .jlpt-char:hover{ border-color: var(--shu); color: var(--shu); }
+
   .card{
     border-top: 1px solid var(--paper-line);
     padding: 32px 0;
@@ -273,6 +319,18 @@
     <button class="go" type="submit">분해</button>
   </form>
   <div class="hint">여러 글자 입력 시 글자별로 결과 나눠 표시함. 예: 語学</div>
+
+  <div class="jlpt-filter">
+    <div class="jlpt-filter-label">JLPT 등급별로 찾아보기</div>
+    <div class="jlpt-buttons" id="jlptButtons">
+      <button type="button" class="jlpt-btn" data-level="5">N5</button>
+      <button type="button" class="jlpt-btn" data-level="4">N4</button>
+      <button type="button" class="jlpt-btn" data-level="3">N3</button>
+      <button type="button" class="jlpt-btn" data-level="2">N2</button>
+      <button type="button" class="jlpt-btn" data-level="1">N1</button>
+    </div>
+    <div class="jlpt-grid" id="jlptGrid"></div>
+  </div>
 
   <div id="results"></div>
 
@@ -619,6 +677,59 @@
     e.preventDefault();
     var v = document.getElementById("kanjiInput").value;
     runSearch(v);
+  });
+
+  // ---------- JLPT 등급별 찾아보기 ----------
+  var jlptIndex = { "5":[], "4":[], "3":[], "2":[], "1":[] };
+  Object.keys(MEANINGS_DATA).forEach(function(ch){
+    var d = MEANINGS_DATA[ch];
+    var lv = d && d.j ? String(d.j) : null;
+    if (lv && jlptIndex[lv]) jlptIndex[lv].push(ch);
+  });
+  Object.keys(jlptIndex).forEach(function(lv){
+    jlptIndex[lv].sort(function(a,b){
+      var sa = (MEANINGS_DATA[a].s||0), sb = (MEANINGS_DATA[b].s||0);
+      if (sa !== sb) return sa - sb;
+      return a < b ? -1 : (a > b ? 1 : 0);
+    });
+  });
+
+  var jlptGridEl = document.getElementById("jlptGrid");
+  var jlptButtonsEl = document.getElementById("jlptButtons");
+  var activeJlptLevel = null;
+
+  function renderJlptGrid(level){
+    jlptGridEl.innerHTML = "";
+    var list = jlptIndex[level] || [];
+    list.forEach(function(ch){
+      var b = el("button","jlpt-char", ch);
+      b.type = "button";
+      b.title = ch;
+      b.addEventListener("click", function(){
+        document.getElementById("kanjiInput").value = ch;
+        runSearch(ch);
+        resultsEl.scrollIntoView({behavior:"smooth", block:"start"});
+      });
+      jlptGridEl.appendChild(b);
+    });
+  }
+
+  Array.from(jlptButtonsEl.querySelectorAll(".jlpt-btn")).forEach(function(btn){
+    var level = btn.getAttribute("data-level");
+    var count = (jlptIndex[level] || []).length;
+    btn.appendChild(el("span","jlpt-count","("+count+")"));
+    btn.addEventListener("click", function(){
+      if (activeJlptLevel === level){
+        activeJlptLevel = null;
+        btn.classList.remove("active");
+        jlptGridEl.innerHTML = "";
+        return;
+      }
+      Array.from(jlptButtonsEl.querySelectorAll(".jlpt-btn")).forEach(function(b){ b.classList.remove("active"); });
+      btn.classList.add("active");
+      activeJlptLevel = level;
+      renderJlptGrid(level);
+    });
   });
 
   // 데이터 내장형: 별도 로딩 없이 즉시 사용 가능
