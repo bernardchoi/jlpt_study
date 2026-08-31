@@ -162,6 +162,12 @@
   }
   .jlpt-char:hover{ border-color: var(--shu); color: var(--shu); }
 
+  .bookmark-bar{ margin-bottom: 24px; }
+  .bookmark-toggle{ border-color: var(--gold); color: var(--gold); }
+  .bookmark-toggle:hover{ background: var(--gold); color:#fff; }
+  .bookmark-toggle.active{ background: var(--gold); color:#fff; }
+  .bookmark-toggle.active .jlpt-count{ color: #fff2d4; }
+
   .card{
     border-top: 1px solid var(--paper-line);
     padding: 32px 0;
@@ -169,11 +175,29 @@
   .card:first-of-type{ border-top:none; }
 
   .hero{
+    position:relative;
     display:flex;
     gap: 22px;
     align-items:flex-start;
     margin-bottom: 22px;
   }
+  .bookmark-btn{
+    position:absolute;
+    top:0; right:0;
+    width:30px; height:30px;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    font-size:17px;
+    line-height:1;
+    border: 1px solid var(--paper-line);
+    border-radius: 50%;
+    background: var(--paper-light);
+    color: var(--ink-faint);
+    cursor:pointer;
+  }
+  .bookmark-btn:hover{ border-color: var(--gold); color: var(--gold); }
+  .bookmark-btn.active{ border-color: var(--gold); color: var(--gold); background: #FBF1DA; }
   .cell{
     position:relative;
     width: 108px;
@@ -319,6 +343,11 @@
     <button class="go" type="submit">분해</button>
   </form>
   <div class="hint">여러 글자 입력 시 글자별로 결과 나눠 표시함. 예: 語学</div>
+
+  <div class="bookmark-bar">
+    <button type="button" class="jlpt-btn bookmark-toggle" id="bookmarkToggleBtn">★ 즐겨찾기 <span class="jlpt-count" id="bookmarkCount">(0)</span></button>
+    <div class="jlpt-grid" id="bookmarkGrid"></div>
+  </div>
 
   <div class="jlpt-filter">
     <div class="jlpt-filter-label">JLPT 등급별로 찾아보기</div>
@@ -590,6 +619,22 @@
     var hero = el("div","hero");
     hero.appendChild(buildCell(ch,false,false));
 
+    var bmBtn = el("button","bookmark-btn","");
+    bmBtn.type = "button";
+    function refreshBmBtn(){
+      var on = isBookmarked(ch);
+      bmBtn.classList.toggle("active", on);
+      bmBtn.textContent = on ? "★" : "☆";
+      bmBtn.title = on ? "즐겨찾기 해제" : "즐겨찾기 추가";
+    }
+    refreshBmBtn();
+    bmBtn.addEventListener("click", function(){
+      toggleBookmark(ch);
+      refreshBmBtn();
+      refreshBookmarkBar();
+    });
+    hero.appendChild(bmBtn);
+
     var meta = el("div","meta");
     var meaningsRow = el("div","row meanings","");
     var readingsRow = el("div","row readings","");
@@ -731,6 +776,77 @@
       renderJlptGrid(level);
     });
   });
+
+  // ---------- 즐겨찾기(북마크) ----------
+  var BOOKMARK_KEY = "jlptStudyBookmarks";
+
+  function loadBookmarks(){
+    try {
+      var raw = localStorage.getItem(BOOKMARK_KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (e) {
+      return [];
+    }
+  }
+  function saveBookmarks(){
+    try {
+      localStorage.setItem(BOOKMARK_KEY, JSON.stringify(Array.from(bookmarkSet)));
+    } catch (e) { /* 저장 불가(사생활 보호 모드 등) 시 무시 */ }
+  }
+
+  var bookmarkSet = new Set(loadBookmarks());
+
+  function isBookmarked(ch){ return bookmarkSet.has(ch); }
+  function toggleBookmark(ch){
+    if (bookmarkSet.has(ch)) bookmarkSet.delete(ch);
+    else bookmarkSet.add(ch);
+    saveBookmarks();
+  }
+
+  var bookmarkGridEl = document.getElementById("bookmarkGrid");
+  var bookmarkToggleBtn = document.getElementById("bookmarkToggleBtn");
+  var bookmarkCountEl = document.getElementById("bookmarkCount");
+  var bookmarkOpen = false;
+
+  function renderBookmarkGrid(){
+    bookmarkGridEl.innerHTML = "";
+    var list = Array.from(bookmarkSet).sort(function(a,b){
+      var sa = (MEANINGS_DATA[a] && MEANINGS_DATA[a].s) || 0;
+      var sb = (MEANINGS_DATA[b] && MEANINGS_DATA[b].s) || 0;
+      if (sa !== sb) return sa - sb;
+      return a < b ? -1 : (a > b ? 1 : 0);
+    });
+    if (!list.length){
+      bookmarkGridEl.appendChild(el("div","empty-state","즐겨찾기한 한자가 없음. 카드 오른쪽 위 별 아이콘을 클릭해 추가 요망."));
+      return;
+    }
+    list.forEach(function(ch){
+      var b = el("button","jlpt-char", ch);
+      b.type = "button";
+      b.title = ch;
+      b.addEventListener("click", function(){
+        document.getElementById("kanjiInput").value = ch;
+        runSearch(ch);
+        resultsEl.scrollIntoView({behavior:"smooth", block:"start"});
+      });
+      bookmarkGridEl.appendChild(b);
+    });
+  }
+
+  function refreshBookmarkBar(){
+    bookmarkCountEl.textContent = "("+bookmarkSet.size+")";
+    if (bookmarkOpen) renderBookmarkGrid();
+  }
+
+  bookmarkToggleBtn.addEventListener("click", function(){
+    bookmarkOpen = !bookmarkOpen;
+    bookmarkToggleBtn.classList.toggle("active", bookmarkOpen);
+    if (bookmarkOpen) renderBookmarkGrid();
+    else bookmarkGridEl.innerHTML = "";
+  });
+
+  refreshBookmarkBar();
 
   // 데이터 내장형: 별도 로딩 없이 즉시 사용 가능
   statusEl.textContent = "준비 완료(오프라인 내장 데이터, 상용·교육한자 중심 약 3400자 수록). 한자 입력 후 분해 버튼 클릭 요망.";
