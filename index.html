@@ -81,6 +81,7 @@
   }
   input[type=text]{
     flex:1;
+    min-width:0;
     font-family:'Noto Serif JP','Noto Sans KR',serif;
     font-size: 20px;
     padding: 12px 14px;
@@ -202,9 +203,9 @@
     margin-bottom:6px;
     white-space:nowrap;
   }
-  .op-children{ display:flex; gap:14px; }
+  .op-children{ display:flex; gap:14px; flex-wrap:wrap; }
   .op-children.col{ flex-direction:column; align-items:center; }
-  .op-children.row{ flex-direction:row; align-items:flex-start; }
+  .op-children.row{ flex-direction:row; align-items:flex-start; justify-content:center; }
 
   .leaf-block{ display:flex; flex-direction:column; align-items:center; gap:6px; width:104px; }
   .leaf-meaning{
